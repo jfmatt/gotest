@@ -1,0 +1,12 @@
+syntax = 'proto3';
+
+package testdata;
+
+option go_package = "github.com/jfmatt/gotest/testdata";
+
+message SomeData {
+  string          a         = 1;
+  int32           i         = 2;
+  repeated string l         = 3;
+  SomeData        recursive = 4;
+}
