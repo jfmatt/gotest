@@ -11,7 +11,7 @@ import (
 // Returns the result of the check - true on success, false on failure. This
 // can be useful to avoid running redundant checks in failure scenarios.
 //
-// Normally, `expected` should be a gomock.Matcher. As a convenience, if
+// Normally, `expected` should be a Matcher. As a convenience, if
 // `expected` is not a matcher, then the expectation will be Eq(expected).
 //
 // Examples:
@@ -58,7 +58,7 @@ func ExpectEq[T any](t gomock.TestHelper, actual T, expected T) bool {
 //	ExpectFatal(t, Any(), func() {
 //	  fmt.Println("a-ok!")
 //	})  // fails, because the function didn't panic
-func ExpectFatal(t gomock.TestHelper, errMatcher gomock.Matcher, f func()) (success bool) {
+func ExpectFatal(t gomock.TestHelper, errMatcher Matcher, f func()) (success bool) {
 	t.Helper()
 
 	defer func() {
@@ -106,7 +106,7 @@ func AssertEq[T any](t gomock.TestHelper, actual T, expected T) {
 }
 
 // Same as ExpectFatal(), but causes the test to immediately terminate on failure.
-func AssertFatal(t gomock.TestHelper, errMatcher gomock.Matcher, f func()) {
+func AssertFatal(t gomock.TestHelper, errMatcher Matcher, f func()) {
 	t.Helper()
 
 	defer func() {
@@ -120,7 +120,7 @@ func AssertFatal(t gomock.TestHelper, errMatcher gomock.Matcher, f func()) {
 	f()
 }
 
-func getExplanation(context string, matcher gomock.Matcher, val any) string {
+func getExplanation(context string, matcher Matcher, val any) string {
 	var e string
 	var useE bool
 	if explainer, ok := matcher.(MismatchExplainer); ok {

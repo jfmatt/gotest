@@ -3,16 +3,14 @@ package gotest
 import (
 	"errors"
 	"fmt"
-
-	"go.uber.org/mock/gomock"
 )
 
-func ErrorMessage(innerMatcher any) gomock.Matcher {
+func ErrorMessage(innerMatcher any) Matcher {
 	return errMsgMatcher{AsMatcher(innerMatcher)}
 }
 
 type errMsgMatcher struct {
-	innerMatcher gomock.Matcher
+	innerMatcher Matcher
 }
 
 func (e errMsgMatcher) Matches(x any) bool {
@@ -30,7 +28,7 @@ func (e errMsgMatcher) String() string {
 	return fmt.Sprintf("is an error with message that %s", e.innerMatcher.String())
 }
 
-func ErrorIs(err error) gomock.Matcher {
+func ErrorIs(err error) Matcher {
 	return errIsMatcher{err}
 }
 

@@ -8,7 +8,7 @@ A unit testing library for Golang
 Based on [GoogleTest](https://github.com/google/googletest).
 Built with, and interoperable with, [GoMock](https://github.com/uber-go/mock).
 
-This library includes a collection of **composable** `gomock.Matcher`
+This library includes a collection of **composable** `Matcher`
 implementations, which can be put together to form partial matches, match
 elements of collection, and so on.  They can be used to match calls to a mock
 object, or as standalone test assertions.

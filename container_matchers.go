@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	"go.uber.org/mock/gomock"
 )
 
 // Matches values whose length fulfills `innerMatcher`. Length is defined by
@@ -23,12 +21,12 @@ import (
 //	func (CustomLen) Len() int { return 2 }
 //	c := CustomLen{}
 //	ExpectThat(t, c, Len(2))
-func Len(innerMatcher any) gomock.Matcher {
+func Len(innerMatcher any) Matcher {
 	return lenMatcher{AsMatcher(innerMatcher)}
 }
 
 // Same behavior as Len(0), but with better error-message reporting.
-func Empty() gomock.Matcher {
+func Empty() Matcher {
 	return Not(true)
 }
 
@@ -55,8 +53,8 @@ func Empty() gomock.Matcher {
 //	ExpectThat(t, []string{"a", "bb", "ccc", "dd"}, Contains("bb", Len(2)))
 //	// no match, because 'bb' is the only element that fulfills either matcher
 //	ExpectThat(t, []string{"a", "bb", "ccc", "dd"}, Not(Contains("bb", StartsWith("b"))))
-func Contains(elements ...any) gomock.Matcher {
-	matchers := make([]gomock.Matcher, len(elements))
+func Contains(elements ...any) Matcher {
+	matchers := make([]Matcher, len(elements))
 	for i, el := range elements {
 		matchers[i] = AsMatcher(el)
 	}
@@ -79,7 +77,7 @@ func Contains(elements ...any) gomock.Matcher {
 //	ExpectThat(t, []string{"a", "b", "c"}, ElementsAre("a', Len(1), Any()))
 //	ExpectThat(t, []string{"a", "b", "c"}, Not(ElementsAre(Any(), "c")))
 //	ExpectThat(t, []string{"a", "b", "c"}, Not(ElementsAre("b", "a", "c")))
-func ElementsAre(elements ...any) gomock.Matcher {
+func ElementsAre(elements ...any) Matcher {
 	return Not(true)
 }
 
@@ -101,8 +99,8 @@ func ElementsAre(elements ...any) gomock.Matcher {
 //	ExpectThat(t, []string{"a", "b", "ccc"}, ElementsAreUnordered("b", Any(), "a"))
 //	ExpectThat(t, []string{"a", "b", "ccc"}, Not(ElementsAreUnordered(Any(), Any())))
 //	ExpectThat(t, []string{"a", "b", "ccc"}, Not(ElementsAreUnordered("a", "ccc", Len(Gt(1)))))
-func ElementsAreUnordered(elements ...any) gomock.Matcher {
-	matchers := make([]gomock.Matcher, len(elements))
+func ElementsAreUnordered(elements ...any) Matcher {
+	matchers := make([]Matcher, len(elements))
 	for i, el := range elements {
 		matchers[i] = AsMatcher(el)
 	}
@@ -140,8 +138,8 @@ func ElementsAreUnordered(elements ...any) gomock.Matcher {
 //		"b": Gt(5),
 //		"c": 3,
 //	}))
-func MapIs[K comparable, V any](mapValues map[K]V) gomock.Matcher {
-	matchers := make(map[K]gomock.Matcher)
+func MapIs[K comparable, V any](mapValues map[K]V) Matcher {
+	matchers := make(map[K]Matcher)
 	for k, v := range mapValues {
 		matchers[k] = AsMatcher(v)
 	}
@@ -153,8 +151,8 @@ func MapIs[K comparable, V any](mapValues map[K]V) gomock.Matcher {
 //
 // This is a weaker test than MapIs(). That is, if MapIs(m).Matches(x),
 // then MapContains(m).Matches(x) is guaranteed to be true.
-func MapContains[K comparable, V any](mapValues map[K]V) gomock.Matcher {
-	matchers := make(map[K]gomock.Matcher)
+func MapContains[K comparable, V any](mapValues map[K]V) Matcher {
+	matchers := make(map[K]Matcher)
 	for k, v := range mapValues {
 		matchers[k] = AsMatcher(v)
 	}
@@ -169,17 +167,17 @@ type KeyVal[K any, V any] struct {
 // Tests that a map contains the key-value pairs in `pairs`.
 //
 // This is very similar to MapContains(), but allows using fuzzy matchers on
-// the keys as well. If keys in `pairs` are gomock.Matchers, then this matcher
+// the keys as well. If keys in `pairs` are Matchers, then this matcher
 // tests that there is some mapping between `pairs` and the key-value pairs in
 // the value such that each of `pairs` is satisfied by a different element of
 // the map.
 //
 // In other words, this is the same as `Contains()`, but for maps - if the map
 // were converted into a list of key-value pairs.
-func MapContainsKVs[K any, V any](pairs ...KeyVal[K, V]) gomock.Matcher {
-	pairMatchers := make([]KeyVal[gomock.Matcher, gomock.Matcher], len(pairs))
+func MapContainsKVs[K any, V any](pairs ...KeyVal[K, V]) Matcher {
+	pairMatchers := make([]KeyVal[Matcher, Matcher], len(pairs))
 	for i, p := range pairs {
-		pairMatchers[i] = KeyVal[gomock.Matcher, gomock.Matcher]{
+		pairMatchers[i] = KeyVal[Matcher, Matcher]{
 			K: AsMatcher(p.K),
 			V: AsMatcher(p.V),
 		}
@@ -190,17 +188,17 @@ func MapContainsKVs[K any, V any](pairs ...KeyVal[K, V]) gomock.Matcher {
 // Tests that a map contains the key-value pairs in `pairs`, and no others.
 //
 // This is very similar to MapIs(), but allows using fuzzy matchers on
-// the keys as well. If keys in `pairs` are gomock.Matchers, then this matcher
+// the keys as well. If keys in `pairs` are Matchers, then this matcher
 // tests that there is some 1:1 mapping between `pairs` and the key-value pairs in
 // the value such that each of `pairs` is satisfied by a different element of
 // the map.
 //
 // In other words, this is the same as `ElementsAreUnordered()`, but for maps -
 // if the map were converted into a list of key-value pairs.
-func MapIsKVs[K any, V any](pairs ...KeyVal[K, V]) gomock.Matcher {
-	pairMatchers := make([]KeyVal[gomock.Matcher, gomock.Matcher], len(pairs))
+func MapIsKVs[K any, V any](pairs ...KeyVal[K, V]) Matcher {
+	pairMatchers := make([]KeyVal[Matcher, Matcher], len(pairs))
 	for i, p := range pairs {
-		pairMatchers[i] = KeyVal[gomock.Matcher, gomock.Matcher]{
+		pairMatchers[i] = KeyVal[Matcher, Matcher]{
 			K: AsMatcher(p.K),
 			V: AsMatcher(p.V),
 		}
@@ -209,7 +207,7 @@ func MapIsKVs[K any, V any](pairs ...KeyVal[K, V]) gomock.Matcher {
 }
 
 type mapKvMatcher struct {
-	matchers []KeyVal[gomock.Matcher, gomock.Matcher]
+	matchers []KeyVal[Matcher, Matcher]
 	matchAll bool
 }
 
@@ -223,7 +221,7 @@ func (m mapKvMatcher) String() string {
 }
 
 type mapMatcher[K comparable] struct {
-	matchers map[K]gomock.Matcher
+	matchers map[K]Matcher
 	matchAll bool
 }
 
@@ -237,7 +235,7 @@ func (m mapMatcher[K]) String() string {
 }
 
 type lenMatcher struct {
-	innerMatcher gomock.Matcher
+	innerMatcher Matcher
 }
 
 type hasLength interface {
@@ -282,7 +280,7 @@ func (l lenMatcher) ExplainFailure(x any) (string, bool) {
 }
 
 type unorderedMatcher struct {
-	elements []gomock.Matcher
+	elements []Matcher
 	matchAll bool
 }
 

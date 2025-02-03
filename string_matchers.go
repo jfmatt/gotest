@@ -4,11 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	"go.uber.org/mock/gomock"
 )
-
-var ()
 
 // Matches strings and byte-arrays containing the given substring.
 //
@@ -16,7 +12,7 @@ var ()
 //
 //	ExpectThat(t, "hello, world", HasSubstr("hello"))
 //	ExpectThat(t, []byte{"a", "b", "c"}, HasSubstr("a"))
-func HasSubstr(s string) gomock.Matcher {
+func HasSubstr(s string) Matcher {
 	return substrMatcher{s: s}
 }
 
@@ -48,7 +44,7 @@ func (m substrMatcher) String() string {
 //	ExpectThat(t, "hello", Regex("hello"))
 //	ExpectThat(t, "hello", Regex("\\w+"))
 //	ExpectThat(t, "hello, world", Not(Regex("\\w+")))
-func Regex(r string) gomock.Matcher {
+func Regex(r string) Matcher {
 	if len(r) == 0 || r[0] != '^' {
 		r = "^" + r
 	}
@@ -71,7 +67,7 @@ func Regex(r string) gomock.Matcher {
 //	ExpectThat(t, "hello", ContainsRegex("\\w+"))
 //	ExpectThat(t, "hello, world", ContainsRegex("\\w+"))
 //	ExpectThat(t, "hello, world", Not(ContainsRegex("\\d")))
-func ContainsRegex(r string) gomock.Matcher {
+func ContainsRegex(r string) Matcher {
 	return regexMatcher{r: regexp.MustCompile(r)}
 }
 

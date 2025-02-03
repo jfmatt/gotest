@@ -15,7 +15,7 @@ type MismatchExplainer interface {
 	ExplainFailure(val any) (string, bool)
 }
 
-func formatGot(val any, matcher gomock.Matcher) string {
+func formatGot(val any, matcher Matcher) string {
 	if asFormatter, ok := matcher.(gomock.GotFormatter); ok {
 		return asFormatter.Got(val)
 	} else {
