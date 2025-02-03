@@ -1,9 +1,12 @@
 # gotest
 
+[![Go
+Reference](https://pkg.go.dev/badge/github.com/jfmatt/gotest.svg)](https://pkg.go.dev/github.com/jfmatt/gotest)
+
 A unit testing library for Golang
 
 Based on [GoogleTest](https://github.com/google/googletest).
-Built with, and interoperable with, [GoMock](github.com/uber-go/mock).
+Built with, and interoperable with, [GoMock](https://github.com/uber-go/mock).
 
 This library includes a collection of **composable** `gomock.Matcher`
 implementations, which can be put together to form partial matches, match
