@@ -3,6 +3,7 @@ package gotest
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 )
 
@@ -78,7 +79,11 @@ func Contains(elements ...any) Matcher {
 //	ExpectThat(t, []string{"a", "b", "c"}, Not(ElementsAre(Any(), "c")))
 //	ExpectThat(t, []string{"a", "b", "c"}, Not(ElementsAre("b", "a", "c")))
 func ElementsAre(elements ...any) Matcher {
-	return Not(true)
+	matchers := make([]Matcher, len(elements))
+	for i, el := range elements {
+		matchers[i] = AsMatcher(el)
+	}
+	return orderedMatcher{matchers}
 }
 
 // Tests that a slice or array contains exactly the provided elements, in any
@@ -269,24 +274,65 @@ func (l lenMatcher) getLength(x any) (int, bool) {
 
 func (l lenMatcher) ExplainFailure(x any) (string, bool) {
 	if length, ok := l.getLength(x); ok {
-		if innerExplainer, ok := l.innerMatcher.(MismatchExplainer); ok {
-			return innerExplainer.ExplainFailure(length)
-		} else {
-			return "", false
-		}
+		return fmt.Sprintf("length is %d", length), true
 	} else {
-		return fmt.Sprintf("val is of type %T, which doesn't have a length", x), true
+		return fmt.Sprintf("type %T doesn't have a length", x), true
 	}
 }
 
 type unorderedMatcher struct {
 	elements []Matcher
+
+	// If true, all elements in the value must be matched by matchers. If
+	// false, matchers can be a subset.
 	matchAll bool
 }
 
 func (m unorderedMatcher) Matches(x any) bool {
-	// TODO
-	return true
+	r := reflect.ValueOf(x)
+	switch r.Kind() {
+	case reflect.Array, reflect.Slice:
+		if m.matchAll && r.Len() != len(m.elements) {
+			return false
+		} else if r.Len() < len(m.elements) {
+			return false
+		}
+
+		// Initialize adjacency graph based on whether each value satisfies each
+		// matcher.
+		matchMatrix := make([][]bool, len(m.elements))
+		for i := range m.elements {
+			matchMatrix[i] = make([]bool, r.Len())
+			for j := range len(matchMatrix[i]) {
+				matchMatrix[i][j] = m.elements[i].Matches(r.Index(j).Interface())
+			}
+		}
+
+		// Short-circuit by checking if any matchers (and values, if we need a
+		// full bijection) are unmatchable.
+		noMatchMatchers, noMatchValues := validateMatchMatrix(matchMatrix, r.Len())
+		if len(noMatchMatchers) > 0 {
+			return false
+		}
+		if m.matchAll && len(noMatchValues) > 0 {
+			return false
+		}
+
+		g := newMatcherFlowGraph(matchMatrix)
+		g.Solve()
+
+		if m.matchAll {
+			// If we need to match all elements, then we need to have a perfect
+			// matching.
+			return g.matchersMatched == len(m.elements) && g.valuesMatched == r.Len()
+		} else {
+			// If we don't need to match all elements, then we just need to
+			// have a matching that covers all matchers.
+			return g.matchersMatched == len(m.elements)
+		}
+	default:
+		return false
+	}
 }
 
 func (m unorderedMatcher) String() string {
@@ -297,7 +343,255 @@ func (m unorderedMatcher) String() string {
 	return fmt.Sprintf("contains elements matching [%s]", strings.Join(elemStrings, "; "))
 }
 
-func (m unorderedMatcher) ExplainFailure(val any) string {
-	// TODO
-	return "didn't match"
+func (m unorderedMatcher) ExplainFailure(val any) (string, bool) {
+	r := reflect.ValueOf(val)
+	switch r.Kind() {
+	case reflect.Array, reflect.Slice:
+		// For legibility reasons, this function is intentionally very similar
+		// to Matches(). It will return increasingly specific error messages as
+		// the matcher is closer and closer to being satisfied.
+
+		if m.matchAll && r.Len() != len(m.elements) {
+			return fmt.Sprintf("%d elements expected but got %d", len(m.elements), r.Len()), true
+		} else if r.Len() < len(m.elements) {
+			return fmt.Sprintf("at least %d elements expected but got %d", len(m.elements), r.Len()), true
+		}
+
+		// Initialize adjacency graph based on whether each value satisfies each
+		// matcher.
+		matchMatrix := make([][]bool, len(m.elements))
+		for i := range m.elements {
+			matchMatrix[i] = make([]bool, r.Len())
+			for j := range len(matchMatrix[i]) {
+				matchMatrix[i][j] = m.elements[i].Matches(r.Index(j).Interface())
+			}
+		}
+
+		// Short-circuit by checking if any matchers are unmatchable.
+		noMatchMatchers, noMatchValues := validateMatchMatrix(matchMatrix, r.Len())
+		noMatchProblems := make([]string, 0)
+		for _, badMatcher := range noMatchMatchers {
+			noMatchProblems = append(
+				noMatchProblems,
+				fmt.Sprintf("matcher %d matches no elements (wanted %s)",
+					badMatcher, m.elements[badMatcher].String()))
+		}
+
+		if m.matchAll {
+			for _, badValue := range noMatchValues {
+				noMatchProblems = append(
+					noMatchProblems,
+					fmt.Sprintf("value %d matches no matchers", badValue))
+			}
+		}
+
+		if len(noMatchProblems) > 0 {
+			return strings.Join(noMatchProblems, "; "), true
+		}
+
+		g := newMatcherFlowGraph(matchMatrix)
+		g.Solve()
+
+		var problem string
+		if m.matchAll {
+			problem = fmt.Sprintf("no permutation could pair all matchers and values, closest match is %d/%d with ", g.matchersMatched, len(m.elements))
+		} else {
+			problem = fmt.Sprintf("no permutation could satisfy all matchers, closest match is %d/%d with ", g.matchersMatched, len(m.elements))
+		}
+
+		matches := make([]string, 0)
+		for i := range g.valToMatcher {
+			if g.valToMatcher[i] != -1 {
+				matches = append(matches, fmt.Sprintf("value %d -> matcher %d", i, g.valToMatcher[i]))
+			}
+		}
+		problem = problem + strings.Join(matches, "; ")
+		return problem, true
+
+	default:
+		return fmt.Sprintf("type %T isn't iterable", val), true
+	}
+}
+
+func validateMatchMatrix(matchMatrix [][]bool, width int) ([]int, []int) {
+	noMatchMatchers := make([]int, 0)
+EACH_MATCHER:
+	for i := range matchMatrix {
+		for j := range width {
+			if matchMatrix[i][j] {
+				continue EACH_MATCHER
+			}
+		}
+		noMatchMatchers = append(noMatchMatchers, i)
+	}
+
+	noMatchValues := make([]int, 0)
+EACH_VALUE:
+	for j := range width {
+		for i := range matchMatrix {
+			if matchMatrix[i][j] {
+				continue EACH_VALUE
+			}
+		}
+		noMatchValues = append(noMatchValues, j)
+	}
+
+	return noMatchMatchers, noMatchValues
+}
+
+type matcherFlowGraph struct {
+	// The adjacency matrix of the graph.
+	//
+	// matchMatrix[i][j] is true if matcher i matches value j.
+	matchMatrix [][]bool
+
+	// The flow graph discovered so far.
+	valToMatcher []int
+	matcherToVal []int
+
+	matchersMatched int
+	valuesMatched   int
+}
+
+func newMatcherFlowGraph(
+	matchMatrix [][]bool,
+) *matcherFlowGraph {
+	matcherToVal := slices.Repeat([]int{-1}, len(matchMatrix))
+	var valToMatcher []int
+	if len(matchMatrix) > 0 {
+		valToMatcher = slices.Repeat([]int{-1}, len(matchMatrix[0]))
+	}
+
+	return &matcherFlowGraph{
+		matchMatrix:  matchMatrix,
+		matcherToVal: matcherToVal,
+		valToMatcher: valToMatcher,
+	}
+}
+
+func (g *matcherFlowGraph) Solve() {
+	if len(g.matchMatrix) == 0 || len(g.matchMatrix[0]) == 0 {
+		return
+	}
+
+	// Like the GoogleMock implementation
+	// (https://github.com/google/googletest/blob/main/googlemock/src/gmock-matchers.cc),
+	// this algorithm is based on the Ford-Fulkerson method for
+	// finding maximum flow in a bipartite graph. The idea is that
+	// we can represent the elements of the value and the matchers
+	// as two sets of nodes in a bipartite graph, and the edges
+	// between them as the possible matchings.
+	for i := range len(g.matchMatrix[0]) {
+		// Try to find a matching for this matcher.
+		//
+		// 'visited' prevents cycles in this particular iteration.
+		visited := make([]bool, len(g.matchMatrix))
+		g.tryAssign(i, &visited)
+	}
+
+	// Count the number of matchings.
+	g.matchersMatched = 0
+	g.valuesMatched = 0
+	for i := range g.matcherToVal {
+		if g.matcherToVal[i] != -1 {
+			g.matchersMatched++
+		}
+	}
+	for i := range g.valToMatcher {
+		if g.valToMatcher[i] != -1 {
+			g.valuesMatched++
+		}
+	}
+}
+
+func (g *matcherFlowGraph) tryAssign(matcher int, visited *[]bool) bool {
+	// Try to find a value that matches this matcher.
+
+	// First, look for potential matches that are currently unassigned.
+	// If we find one, assign it and return.
+	for j := range g.matchMatrix[0] {
+		if g.matchMatrix[matcher][j] && g.valToMatcher[j] == -1 {
+			g.matcherToVal[matcher] = j
+			g.valToMatcher[j] = matcher
+			return true
+		}
+	}
+
+	// Second pass: Look for values that are already assigned to other
+	// matchers. If we find one, try to reassign it to a different matcher.
+	// If we can reassign it, then we can assign this matcher to the
+	// value.
+	for j := range g.matchMatrix[0] {
+		if g.matchMatrix[matcher][j] && !(*visited)[j] {
+			// value j is a potential match for this matcher.
+			(*visited)[j] = true
+			if g.tryAssign(g.valToMatcher[j], visited) {
+				g.valToMatcher[j] = matcher
+				g.matcherToVal[matcher] = j
+				return true
+			}
+		}
+	}
+	return false
+}
+
+type orderedMatcher struct {
+	elements []Matcher
+}
+
+func (m orderedMatcher) Matches(x any) bool {
+	r := reflect.ValueOf(x)
+	switch r.Kind() {
+	case reflect.Array, reflect.Slice:
+		if r.Len() != len(m.elements) {
+			return false
+		}
+		for i := range r.Len() {
+			if !m.elements[i].Matches(r.Index(i).Interface()) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func (m orderedMatcher) ExplainFailure(val any) (string, bool) {
+	parts := []string{}
+	r := reflect.ValueOf(val)
+	switch r.Kind() {
+	case reflect.Array, reflect.Slice:
+		if r.Len() != len(m.elements) {
+			return fmt.Sprintf("%d elements expected but got %d", len(m.elements), r.Len()), true
+		}
+		for i := range r.Len() {
+			if !m.elements[i].Matches(r.Index(i).Interface()) {
+				var explanation string
+				var useE bool
+				if explainer, ok := m.elements[i].(MismatchExplainer); ok {
+					explanation, useE = explainer.ExplainFailure(r.Index(i).Interface())
+				}
+				if !useE {
+					explanation = "doesn't match"
+				}
+
+				parts = append(parts, fmt.Sprintf("element %d: %s", i, explanation))
+			}
+		}
+	default:
+		return fmt.Sprintf("val is of type %T, which isn't iterable", val), true
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "; "), true
+}
+
+func (m orderedMatcher) String() string {
+	elemStrings := make([]string, len(m.elements))
+	for i, el := range m.elements {
+		elemStrings[i] = el.String()
+	}
+	return fmt.Sprintf("contains elements matching [%s]", strings.Join(elemStrings, "; "))
 }

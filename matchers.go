@@ -4,6 +4,10 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+var (
+	Any = gomock.Any
+)
+
 // In order to ensure compatibility with generated mocks, the
 // Matcher type in this package is the same as the one from
 // gomock. It's re-exported here for convenience, and to

@@ -1,6 +1,6 @@
 module github.com/jfmatt/gotest
 
-go 1.22.1
+go 1.23.1
 
 require go.uber.org/mock v0.5.0
 
