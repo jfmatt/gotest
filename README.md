@@ -1,7 +1,7 @@
 # gotest
 
 [![Go
-Reference](https://pkg.go.dev/badge/github.com/jfmatt/gotest.svg)](https://pkg.go.dev/github.com/jfmatt/gotest)
+Reference](https://pkg.go.dev/badge/github.com/jfmatt/gotest.svg)](https://pkg.go.dev/github.com/jfmatt/gotest) [![Test status](https://github.com/jfmatt/gotest/actions/workflows/go.yml/badge.svg)](https://github.com/jfmatt/gotest/actions/workflows/go.yml)
 
 A unit testing library for Golang
 
