@@ -6,6 +6,32 @@ import (
 	"strings"
 )
 
+// Matches strings and byte-arrays that start with the given prefix.
+//
+// Examples:
+//
+//	ExpectThat(t, "hello", StartsWith("h"))
+//	ExpectThat(t, "hello", StartsWith("hello"))
+func StartsWith(s string) Matcher {
+	return prefixMatcher{prefix: s}
+}
+
+type prefixMatcher struct {
+	stringMatcher
+	prefix string
+}
+
+func (m prefixMatcher) Matches(x any) bool {
+	if asStr, ok := m.getString(x); ok {
+		return strings.HasPrefix(asStr, m.prefix)
+	} else {
+		return false
+	}
+}
+func (m prefixMatcher) String() string {
+	return fmt.Sprintf("starts with '%s'", m.prefix)
+}
+
 // Matches strings and byte-arrays containing the given substring.
 //
 // Examples:

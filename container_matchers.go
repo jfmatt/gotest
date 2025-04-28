@@ -321,15 +321,7 @@ func (m unorderedMatcher) Matches(x any) bool {
 		g := newMatcherFlowGraph(matchMatrix)
 		g.Solve()
 
-		if m.matchAll {
-			// If we need to match all elements, then we need to have a perfect
-			// matching.
-			return g.matchersMatched == len(m.elements) && g.valuesMatched == r.Len()
-		} else {
-			// If we don't need to match all elements, then we just need to
-			// have a matching that covers all matchers.
-			return g.matchersMatched == len(m.elements)
-		}
+		return g.matchersMatched == len(m.elements)
 	default:
 		return false
 	}
@@ -450,7 +442,6 @@ type matcherFlowGraph struct {
 	matcherToVal []int
 
 	matchersMatched int
-	valuesMatched   int
 }
 
 func newMatcherFlowGraph(
@@ -481,25 +472,19 @@ func (g *matcherFlowGraph) Solve() {
 	// we can represent the elements of the value and the matchers
 	// as two sets of nodes in a bipartite graph, and the edges
 	// between them as the possible matchings.
-	for i := range len(g.matchMatrix[0]) {
+	for matcher := range len(g.matchMatrix) {
 		// Try to find a matching for this matcher.
 		//
 		// 'visited' prevents cycles in this particular iteration.
 		visited := make([]bool, len(g.matchMatrix))
-		g.tryAssign(i, &visited)
+		g.tryAssign(matcher, &visited)
 	}
 
 	// Count the number of matchings.
 	g.matchersMatched = 0
-	g.valuesMatched = 0
-	for i := range g.matcherToVal {
-		if g.matcherToVal[i] != -1 {
+	for _, valMatched := range g.matcherToVal {
+		if valMatched != -1 {
 			g.matchersMatched++
-		}
-	}
-	for i := range g.valToMatcher {
-		if g.valToMatcher[i] != -1 {
-			g.valuesMatched++
 		}
 	}
 }
@@ -509,8 +494,8 @@ func (g *matcherFlowGraph) tryAssign(matcher int, visited *[]bool) bool {
 
 	// First, look for potential matches that are currently unassigned.
 	// If we find one, assign it and return.
-	for j := range g.matchMatrix[0] {
-		if g.matchMatrix[matcher][j] && g.valToMatcher[j] == -1 {
+	for j, matches := range g.matchMatrix[matcher] {
+		if matches && g.valToMatcher[j] == -1 {
 			g.matcherToVal[matcher] = j
 			g.valToMatcher[j] = matcher
 			return true
@@ -521,8 +506,8 @@ func (g *matcherFlowGraph) tryAssign(matcher int, visited *[]bool) bool {
 	// matchers. If we find one, try to reassign it to a different matcher.
 	// If we can reassign it, then we can assign this matcher to the
 	// value.
-	for j := range g.matchMatrix[0] {
-		if g.matchMatrix[matcher][j] && !(*visited)[j] {
+	for j, matches := range g.matchMatrix[matcher] {
+		if matches && !(*visited)[j] {
 			// value j is a potential match for this matcher.
 			(*visited)[j] = true
 			if g.tryAssign(g.valToMatcher[j], visited) {
