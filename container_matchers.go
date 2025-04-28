@@ -164,9 +164,18 @@ func MapContains[K comparable, V any](mapValues map[K]V) Matcher {
 	return mapMatcher[K]{matchers, false}
 }
 
-type KeyVal[K any, V any] struct {
-	K K
-	V V
+type KeyValT struct {
+	K any
+	V any
+}
+
+func KeyVal(k, v any) KeyValT {
+	return KeyValT{k, v}
+}
+
+type keyValMatcher struct {
+	K Matcher
+	V Matcher
 }
 
 // Tests that a map contains the key-value pairs in `pairs`.
@@ -179,10 +188,16 @@ type KeyVal[K any, V any] struct {
 //
 // In other words, this is the same as `Contains()`, but for maps - if the map
 // were converted into a list of key-value pairs.
-func MapContainsKVs[K any, V any](pairs ...KeyVal[K, V]) Matcher {
-	pairMatchers := make([]KeyVal[Matcher, Matcher], len(pairs))
+//
+// Examples:
+//
+//		ExpectThat(t, map[string]int{"a": 1, "bxy": 10}, MapIsKVs(
+//	     	KeyVal(StartsWith("b"), Gt(5)),
+//	 	))
+func MapContainsKVs(pairs ...KeyValT) Matcher {
+	pairMatchers := make([]keyValMatcher, len(pairs))
 	for i, p := range pairs {
-		pairMatchers[i] = KeyVal[Matcher, Matcher]{
+		pairMatchers[i] = keyValMatcher{
 			K: AsMatcher(p.K),
 			V: AsMatcher(p.V),
 		}
@@ -200,10 +215,17 @@ func MapContainsKVs[K any, V any](pairs ...KeyVal[K, V]) Matcher {
 //
 // In other words, this is the same as `ElementsAreUnordered()`, but for maps -
 // if the map were converted into a list of key-value pairs.
-func MapIsKVs[K any, V any](pairs ...KeyVal[K, V]) Matcher {
-	pairMatchers := make([]KeyVal[Matcher, Matcher], len(pairs))
+//
+// Examples:
+//
+//		ExpectThat(t, map[string]int{"a": 1, "bxy": 10}, MapIsKVs(
+//			KeyVal("a", Lt(2)),
+//	     	KeyVal(StartsWith("b"), Gt(5)),
+//	 	))
+func MapIsKVs(pairs ...KeyValT) Matcher {
+	pairMatchers := make([]keyValMatcher, len(pairs))
 	for i, p := range pairs {
-		pairMatchers[i] = KeyVal[Matcher, Matcher]{
+		pairMatchers[i] = keyValMatcher{
 			K: AsMatcher(p.K),
 			V: AsMatcher(p.V),
 		}
@@ -212,11 +234,12 @@ func MapIsKVs[K any, V any](pairs ...KeyVal[K, V]) Matcher {
 }
 
 type mapKvMatcher struct {
-	matchers []KeyVal[Matcher, Matcher]
+	matchers []keyValMatcher
 	matchAll bool
 }
 
 func (m mapKvMatcher) Matches(x any) bool {
+	// TODO
 	return false
 }
 
@@ -231,6 +254,7 @@ type mapMatcher[K comparable] struct {
 }
 
 func (m mapMatcher[K]) Matches(x any) bool {
+	// TODO
 	return false
 }
 
