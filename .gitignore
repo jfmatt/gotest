@@ -17,4 +17,5 @@ go.work.sum
 
 # Editors
 *.swp
-
+.claude/
+CLAUDE.md
