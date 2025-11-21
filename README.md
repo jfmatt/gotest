@@ -95,6 +95,8 @@ This checks that "group1" exists and contains a key "a" with a value less than
 keys "m" and "n" with those specific values. The "group2" entry is not checked
 at all.
 
+For a full list of supported matchers, see the [GoDoc](https://pkg.go.dev/github.com/jfmatt/gotest).
+
 ## Mocks
 
 `gotest` matchers integrate with [GoMock](https://github.com/uber-go/mock) `EXPECT()` calls. Given an interface:
