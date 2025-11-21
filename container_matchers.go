@@ -27,8 +27,35 @@ func Len(innerMatcher any) Matcher {
 }
 
 // Same behavior as Len(0), but with better error-message reporting.
+//
+// Examples:
+//
+//	ExpectThat(t, []int{}, Empty())
+//	ExpectThat(t, "", Empty())
+//	ExpectThat(t, map[string]int{}, Empty())
+//	ExpectThat(t, []int{1, 2, 3}, Not(Empty()))
 func Empty() Matcher {
-	return Not(true)
+	return emptyMatcher{}
+}
+
+type emptyMatcher struct{}
+
+func (e emptyMatcher) Matches(x any) bool {
+	if length, ok := getLength(x); ok {
+		return length == 0
+	}
+	return false
+}
+
+func (e emptyMatcher) String() string {
+	return "is empty"
+}
+
+func (e emptyMatcher) ExplainFailure(x any) (string, bool) {
+	if length, ok := getLength(x); ok {
+		return fmt.Sprintf("length is %d", length), true
+	}
+	return fmt.Sprintf("type %T doesn't have a length", x), true
 }
 
 // Matches slices or arrays containing all of the provided elements, in any
@@ -156,6 +183,13 @@ func MapIs[K comparable, V any](mapValues map[K]V) Matcher {
 //
 // This is a weaker test than MapIs(). That is, if MapIs(m).Matches(x),
 // then MapContains(m).Matches(x) is guaranteed to be true.
+//
+// Examples:
+//
+//	m := map[string]int{"a": 1, "b": 2, "c": 3}
+//	ExpectThat(t, m, MapContains(map[string]int{"a": 1, "b": 2}))
+//	ExpectThat(t, m, MapContains(map[string]any{"a": 1, "c": Gt(2)}))
+//	ExpectThat(t, m, Not(MapContains(map[string]int{"d": 4})))
 func MapContains[K comparable, V any](mapValues map[K]V) Matcher {
 	matchers := make(map[K]Matcher)
 	for k, v := range mapValues {
@@ -343,7 +377,7 @@ type hasLength interface {
 }
 
 func (l lenMatcher) Matches(x any) bool {
-	if length, ok := l.getLength(x); ok {
+	if length, ok := getLength(x); ok {
 		return l.innerMatcher.Matches(length)
 	} else {
 		return false
@@ -354,7 +388,7 @@ func (l lenMatcher) String() string {
 	return fmt.Sprintf("has length which %s", l.innerMatcher.String())
 }
 
-func (l lenMatcher) getLength(x any) (int, bool) {
+func getLength(x any) (int, bool) {
 	if lennable, ok := x.(hasLength); ok {
 		return lennable.Len(), true
 	}
@@ -368,7 +402,7 @@ func (l lenMatcher) getLength(x any) (int, bool) {
 }
 
 func (l lenMatcher) ExplainFailure(x any) (string, bool) {
-	if length, ok := l.getLength(x); ok {
+	if length, ok := getLength(x); ok {
 		return fmt.Sprintf("length is %d", length), true
 	} else {
 		return fmt.Sprintf("type %T doesn't have a length", x), true

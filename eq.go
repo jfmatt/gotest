@@ -27,6 +27,19 @@ import (
 // This is the default matcher used by all other matchers to compare nested
 // values when passed values directly instead of matchers. If you want to
 // customize the comparison behavior, use Equiv().
+//
+// Examples:
+//
+//	ExpectThat(t, 42, Eq(42))
+//	ExpectThat(t, "hello", Eq("hello"))
+//	ExpectThat(t, "hello", "hello") // same as above
+//	ExpectThat(t, []int{1, 2, 3}, Eq([]int{1, 2, 3}))
+//	ExpectThat(t, 42, Not(Eq(43)))
+//	ExpectThat(t, 42, Not(43)) // same as above
+//
+// You can also use ExpectEq() as a shorthand:
+//
+//	ExpectEq(t, 42, 42)
 func Eq(x any) Matcher {
 	callerPkg, ok := GetCallerPkg()
 	if !ok {
@@ -45,6 +58,14 @@ func Eq(x any) Matcher {
 // Note that this matcher does not automatically inject any Export or Ignore
 // options, so using it with types that have unexported fields requires setting
 // some options.
+//
+// Examples:
+//
+//	type Person struct { Name string; Age int }
+//	p1 := Person{"Alice", 30}
+//	p2 := Person{"Alice", 31}
+//	ExpectThat(t, p1, Equiv(p2, cmpopts.IgnoreFields(Person{}, "Age")))
+//	ExpectThat(t, p1, Not(Equiv(p2)))
 func Equiv(x any, options ...cmp.Option) Matcher {
 	return eqMatcher{val: x, opts: options}
 }
