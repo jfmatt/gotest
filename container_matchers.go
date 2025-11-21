@@ -178,6 +178,26 @@ type keyValMatcher struct {
 	V Matcher
 }
 
+func (kv *keyValMatcher) String() string {
+	return fmt.Sprintf("key (%s) -> %s", kv.K.String(), kv.V.String())
+}
+
+func (kv *keyValMatcher) Matches(x any) bool {
+	// x is expected to be a key-value pair, represented as a two-element
+	// array or slice.
+	r := reflect.ValueOf(x)
+	switch r.Kind() {
+	case reflect.Array, reflect.Slice:
+		if r.Len() != 2 {
+			return false
+		}
+		return kv.K.Matches(r.Index(0).Interface()) &&
+			kv.V.Matches(r.Index(1).Interface())
+	default:
+		return false
+	}
+}
+
 // Tests that a map contains the key-value pairs in `pairs`.
 //
 // This is very similar to MapContains(), but allows using fuzzy matchers on
@@ -195,9 +215,9 @@ type keyValMatcher struct {
 //	     	KeyVal(StartsWith("b"), Gt(5)),
 //	 	))
 func MapContainsKVs(pairs ...KeyValT) Matcher {
-	pairMatchers := make([]keyValMatcher, len(pairs))
+	pairMatchers := make([]Matcher, len(pairs))
 	for i, p := range pairs {
-		pairMatchers[i] = keyValMatcher{
+		pairMatchers[i] = &keyValMatcher{
 			K: AsMatcher(p.K),
 			V: AsMatcher(p.V),
 		}
@@ -223,9 +243,9 @@ func MapContainsKVs(pairs ...KeyValT) Matcher {
 //	     	KeyVal(StartsWith("b"), Gt(5)),
 //	 	))
 func MapIsKVs(pairs ...KeyValT) Matcher {
-	pairMatchers := make([]keyValMatcher, len(pairs))
+	pairMatchers := make([]Matcher, len(pairs))
 	for i, p := range pairs {
-		pairMatchers[i] = keyValMatcher{
+		pairMatchers[i] = &keyValMatcher{
 			K: AsMatcher(p.K),
 			V: AsMatcher(p.V),
 		}
@@ -234,18 +254,43 @@ func MapIsKVs(pairs ...KeyValT) Matcher {
 }
 
 type mapKvMatcher struct {
-	matchers []keyValMatcher
+	matchers []Matcher
 	matchAll bool
 }
 
 func (m mapKvMatcher) Matches(x any) bool {
-	// TODO
-	return false
+	if reflect.ValueOf(x).Kind() != reflect.Map {
+		return false
+	}
+
+	xAsList := make([][2]any, 0)
+	iter := reflect.ValueOf(x).MapRange()
+	for iter.Next() {
+		k := iter.Key()
+		v := iter.Value()
+		xAsList = append(xAsList, [2]any{k.Interface(), v.Interface()})
+	}
+
+	return unorderedMatcher{
+		elements: m.matchers,
+		matchAll: m.matchAll,
+	}.Matches(xAsList)
 }
 
 func (m mapKvMatcher) String() string {
-	// TODO
-	return "UNIMPL"
+	var exact string
+	if m.matchAll {
+		exact = "has"
+	} else {
+		exact = "contains"
+	}
+
+	elemStrings := make([]string, len(m.matchers))
+	for i, el := range m.matchers {
+		elemStrings[i] = el.String()
+	}
+	return fmt.Sprintf("%s map entries [%s]",
+		exact, strings.Join(elemStrings, "; "))
 }
 
 type mapMatcher[K comparable] struct {
@@ -254,13 +299,39 @@ type mapMatcher[K comparable] struct {
 }
 
 func (m mapMatcher[K]) Matches(x any) bool {
-	// TODO
-	return false
+	if reflect.ValueOf(x).Kind() != reflect.Map {
+		return false
+	}
+
+	for k, matcher := range m.matchers {
+		val := reflect.ValueOf(x).MapIndex(reflect.ValueOf(k))
+		if !val.IsValid() {
+			return false
+		}
+		if !matcher.Matches(val.Interface()) {
+			return false
+		}
+	}
+
+	return !m.matchAll || (reflect.ValueOf(x).Len() == len(m.matchers))
 }
 
 func (m mapMatcher[K]) String() string {
-	// TODO
-	return "UNIMPL"
+	var exact string
+	if m.matchAll {
+		exact = "has"
+	} else {
+		exact = "contains"
+	}
+
+	parts := make([]string, 0)
+	for k, matcher := range m.matchers {
+		parts = append(parts, fmt.Sprintf("key %v -> %s", k, matcher.String()))
+	}
+
+	return fmt.Sprintf("%s map entries [%s]",
+		exact, strings.Join(parts, "; "),
+	)
 }
 
 type lenMatcher struct {
@@ -356,7 +427,16 @@ func (m unorderedMatcher) String() string {
 	for i, el := range m.elements {
 		elemStrings[i] = el.String()
 	}
-	return fmt.Sprintf("contains elements matching [%s]", strings.Join(elemStrings, "; "))
+	var prefix string
+	if m.matchAll {
+		prefix = "has elements matching (in any order)"
+	} else {
+		prefix = "contains elements matching"
+	}
+
+	return fmt.Sprintf("%s [%s]",
+		prefix, strings.Join(elemStrings, "; "),
+	)
 }
 
 func (m unorderedMatcher) ExplainFailure(val any) (string, bool) {
@@ -602,5 +682,5 @@ func (m orderedMatcher) String() string {
 	for i, el := range m.elements {
 		elemStrings[i] = el.String()
 	}
-	return fmt.Sprintf("contains elements matching [%s]", strings.Join(elemStrings, "; "))
+	return fmt.Sprintf("has elements matching [%s]", strings.Join(elemStrings, "; "))
 }
