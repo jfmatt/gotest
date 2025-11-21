@@ -38,9 +38,10 @@ func TestGt(t *testing.T) {
 	ExpectThat(t, uint(10), Gt(5))
 	ExpectThat(t, uint8(10), Gt(int32(5)))
 
-	// Uint vs float - incompatible, should not match
-	ExpectThat(t, uint(10), Not(Gt(5.0)))
-	ExpectThat(t, uint8(10), Not(Gt(float64(5))))
+	// Uint vs float (compare as float64)
+	ExpectThat(t, uint(10), Gt(5.0))
+	ExpectThat(t, uint8(10), Gt(float64(5)))
+	ExpectThat(t, uint(10), Not(Gt(15.0)))
 
 	// Strings
 	ExpectThat(t, "banana", Gt("apple"))
@@ -88,9 +89,10 @@ func TestLt(t *testing.T) {
 	ExpectThat(t, uint(5), Lt(10))
 	ExpectThat(t, uint8(5), Lt(int32(10)))
 
-	// Uint vs float - incompatible, should not match
-	ExpectThat(t, uint(5), Not(Lt(10.0)))
-	ExpectThat(t, uint8(5), Not(Lt(float64(10))))
+	// Uint vs float (compare as float64)
+	ExpectThat(t, uint(5), Lt(10.0))
+	ExpectThat(t, uint8(5), Lt(float64(10)))
+	ExpectThat(t, uint(15), Not(Lt(10.0)))
 
 	// Strings
 	ExpectThat(t, "apple", Lt("banana"))
@@ -139,8 +141,10 @@ func TestGte(t *testing.T) {
 	ExpectThat(t, uint(10), Ge(5))
 	ExpectThat(t, uint(10), Ge(10))
 
-	// Uint vs float - incompatible
-	ExpectThat(t, uint(10), Not(Ge(5.0)))
+	// Uint vs float (compare as float64)
+	ExpectThat(t, uint(10), Ge(5.0))
+	ExpectThat(t, uint(10), Ge(10.0))
+	ExpectThat(t, uint(5), Not(Ge(10.0)))
 
 	// Strings
 	ExpectThat(t, "banana", Ge("apple"))
@@ -185,8 +189,10 @@ func TestLte(t *testing.T) {
 	ExpectThat(t, uint(5), Le(10))
 	ExpectThat(t, uint(5), Le(5))
 
-	// Uint vs float - incompatible
-	ExpectThat(t, uint(5), Not(Le(10.0)))
+	// Uint vs float (compare as float64)
+	ExpectThat(t, uint(5), Le(10.0))
+	ExpectThat(t, uint(10), Le(10.0))
+	ExpectThat(t, uint(15), Not(Le(10.0)))
 
 	// Strings
 	ExpectThat(t, "apple", Le("banana"))

@@ -16,7 +16,7 @@ import (
 //
 // Equality is defined as follows:
 //
-//   - Primitive types (ints, strings, bools, etc) are compared using ==.
+//   - Primitive types (ints, strings, etc) are compared using ==.
 //   - All protos are compared using proto.Equal, including when nested within
 //     other structs, slices, or maps.
 //   - Non-proto structs are compared field-by-field. Unexported fields are
@@ -32,7 +32,7 @@ import (
 //
 //	ExpectThat(t, 42, Eq(42))
 //	ExpectThat(t, "hello", Eq("hello"))
-//	ExpectThat(t, "hello", "hello") // same as above
+//	ExpectThat(t, Name("hello"), Eq("hello"))  // same underlying type
 //	ExpectThat(t, []int{1, 2, 3}, Eq([]int{1, 2, 3}))
 //	ExpectThat(t, 42, Not(Eq(43)))
 //	ExpectThat(t, 42, Not(43)) // same as above

@@ -3,6 +3,7 @@ package gotest
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 )
@@ -81,14 +82,6 @@ func (g gtMatcher[T]) Matches(x any) bool {
 	return cmpResult > 0 // x > threshold
 }
 
-func (g gtMatcher[T]) ExplainFailure(x any) (string, bool) {
-	val, ok := x.(T)
-	if !ok {
-		return fmt.Sprintf("type %T, which is not comparable to %v (%T)", x, g.threshold, g.threshold), true
-	}
-	return fmt.Sprintf("is %v, which is not greater than %v", val, g.threshold), true
-}
-
 type ltMatcher[T cmp.Ordered] struct {
 	threshold T
 }
@@ -103,14 +96,6 @@ func (l ltMatcher[T]) Matches(x any) bool {
 		return false
 	}
 	return cmpResult < 0 // x < threshold
-}
-
-func (l ltMatcher[T]) ExplainFailure(x any) (string, bool) {
-	val, ok := x.(T)
-	if !ok {
-		return fmt.Sprintf("type %T, which is not comparable to %v (%T)", x, l.threshold, l.threshold), true
-	}
-	return fmt.Sprintf("is %v, which is not less than %v", val, l.threshold), true
 }
 
 type geMatcher[T cmp.Ordered] struct {
@@ -129,14 +114,6 @@ func (g geMatcher[T]) Matches(x any) bool {
 	return cmpResult >= 0 // x >= threshold
 }
 
-func (g geMatcher[T]) ExplainFailure(x any) (string, bool) {
-	val, ok := x.(T)
-	if !ok {
-		return fmt.Sprintf("type %T, which is not comparable to %v (%T)", x, g.threshold, g.threshold), true
-	}
-	return fmt.Sprintf("is %v, which is not greater than or equal to %v", val, g.threshold), true
-}
-
 type leMatcher[T cmp.Ordered] struct {
 	threshold T
 }
@@ -153,13 +130,18 @@ func (l leMatcher[T]) Matches(x any) bool {
 	return cmpResult <= 0 // x <= threshold
 }
 
-func (l leMatcher[T]) ExplainFailure(x any) (string, bool) {
-	val, ok := x.(T)
-	if !ok {
-		return fmt.Sprintf("type %T, which is not comparable to %v (%T)", x, l.threshold, l.threshold), true
-	}
-	return fmt.Sprintf("is %v, which is not less than or equal to %v", val, l.threshold), true
-}
+type numClass int
+
+const (
+	numClassNonNumeric numClass = iota
+	numClassNormalInt
+	numClassNegativeInt
+	numClassUint
+	numClassBigUint // bigger than MaxInt64
+	numClassFloat
+	numClassNegativeFloat
+	numClassBigFloat
+)
 
 // tryCompare attempts to compare two values using smart type promotion.
 // Returns (canCompare bool, comparisonResult int) where:
@@ -169,58 +151,215 @@ func tryCompare[T cmp.Ordered](actual any, threshold T) (bool, int) {
 	actualVal := reflect.ValueOf(actual)
 	thresholdVal := reflect.ValueOf(threshold)
 
-	// Check what types we're dealing with
-	hasUint := actualVal.CanUint() || thresholdVal.CanUint()
-	hasFloat := actualVal.CanFloat() || thresholdVal.CanFloat()
-
-	// uint + float = incompatible
-	if hasUint && hasFloat {
-		return false, 0
-	}
-
-	// If either is uint (and no floats), compare as uint64
-	if hasUint {
-		a := toUint64(actualVal)
-		b := toUint64(thresholdVal)
-		if a < b {
-			return true, -1
-		} else if a > b {
-			return true, 1
-		}
-		return true, 0
-	}
-
-	// If either is float (and no uints), compare as float64
-	if hasFloat {
-		a := toFloat64(actualVal)
-		b := toFloat64(thresholdVal)
-		if a < b {
-			return true, -1
-		} else if a > b {
-			return true, 1
-		}
-		return true, 0
-	}
-
-	// If both are signed ints, compare as int64
-	if actualVal.CanInt() && thresholdVal.CanInt() {
-		a := actualVal.Int()
-		b := thresholdVal.Int()
-		if a < b {
-			return true, -1
-		} else if a > b {
-			return true, 1
-		}
-		return true, 0
-	}
-
 	// If both are strings, compare as string
 	if actualVal.Kind() == reflect.String && thresholdVal.Kind() == reflect.String {
 		return true, strings.Compare(actualVal.String(), thresholdVal.String())
 	}
 
-	// Incompatible types
-	return false, 0
+	actualClass := classify(actual)
+	thresholdClass := classify(threshold)
+	if actualClass == numClassNonNumeric || thresholdClass == numClassNonNumeric {
+		return false, 0
+	}
+
+	// Handle comparisons based on classification
+	switch {
+	case actualClass == numClassBigUint && thresholdClass == numClassBigUint:
+		if actualVal.Uint() < thresholdVal.Uint() {
+			return true, -1
+		}
+		if actualVal.Uint() > thresholdVal.Uint() {
+			return true, 1
+		}
+		return true, 0
+
+	// Negative vs positive: negative is always less
+	case (actualClass == numClassNegativeInt || actualClass == numClassNegativeFloat) &&
+		(thresholdClass == numClassNormalInt || thresholdClass == numClassUint ||
+			thresholdClass == numClassBigUint || thresholdClass == numClassFloat ||
+			thresholdClass == numClassBigFloat):
+		return true, -1
+
+	case (thresholdClass == numClassNegativeInt || thresholdClass == numClassNegativeFloat) &&
+		(actualClass == numClassNormalInt || actualClass == numClassUint ||
+			actualClass == numClassBigUint || actualClass == numClassFloat ||
+			actualClass == numClassBigFloat):
+		return true, 1
+
+	// BigUint comparisons with other types
+	case actualClass == numClassBigUint && (thresholdClass == numClassNormalInt ||
+		thresholdClass == numClassUint || thresholdClass == numClassFloat):
+		return true, 1 // BigUint is always > smaller positive types
+
+	case thresholdClass == numClassBigUint && (actualClass == numClassNormalInt ||
+		actualClass == numClassUint || actualClass == numClassFloat):
+		return true, -1 // Smaller positive types are always < BigUint
+
+	case actualClass == numClassBigUint && thresholdClass == numClassBigFloat:
+		// Compare as float64
+		actualFloat := float64(actualVal.Uint())
+		thresholdFloat := thresholdVal.Float()
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	case thresholdClass == numClassBigUint && actualClass == numClassBigFloat:
+		actualFloat := actualVal.Float()
+		thresholdFloat := float64(thresholdVal.Uint())
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	// BigFloat comparisons
+	case actualClass == numClassBigFloat && (thresholdClass == numClassNormalInt ||
+		thresholdClass == numClassUint || thresholdClass == numClassFloat):
+		actualFloat := actualVal.Float()
+		thresholdFloat := toFloat64(thresholdVal)
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	case thresholdClass == numClassBigFloat && (actualClass == numClassNormalInt ||
+		actualClass == numClassUint || actualClass == numClassFloat):
+		actualFloat := toFloat64(actualVal)
+		thresholdFloat := thresholdVal.Float()
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	case actualClass == numClassBigFloat && thresholdClass == numClassBigFloat:
+		if actualVal.Float() < thresholdVal.Float() {
+			return true, -1
+		}
+		if actualVal.Float() > thresholdVal.Float() {
+			return true, 1
+		}
+		return true, 0
+
+	case actualClass == numClassBigFloat && (thresholdClass == numClassNegativeInt ||
+		thresholdClass == numClassNegativeFloat):
+		return true, 1 // BigFloat is always > negative numbers
+
+	case thresholdClass == numClassBigFloat && (actualClass == numClassNegativeInt ||
+		actualClass == numClassNegativeFloat):
+		return true, -1 // Negative numbers are always < BigFloat
+
+	// Float comparisons with smaller types
+	case (actualClass == numClassFloat || actualClass == numClassNegativeFloat) &&
+		(thresholdClass == numClassNormalInt || thresholdClass == numClassUint ||
+			thresholdClass == numClassFloat || thresholdClass == numClassNegativeInt ||
+			thresholdClass == numClassNegativeFloat):
+		actualFloat := toFloat64(actualVal)
+		thresholdFloat := toFloat64(thresholdVal)
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	case (thresholdClass == numClassFloat || thresholdClass == numClassNegativeFloat) &&
+		(actualClass == numClassNormalInt || actualClass == numClassUint ||
+			actualClass == numClassNegativeInt):
+		actualFloat := toFloat64(actualVal)
+		thresholdFloat := toFloat64(thresholdVal)
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	// Integer-only comparisons (both non-negative)
+	case (actualClass == numClassNormalInt || actualClass == numClassUint) &&
+		(thresholdClass == numClassNormalInt || thresholdClass == numClassUint):
+		actualUint := toUint64(actualVal)
+		thresholdUint := toUint64(thresholdVal)
+		if actualUint < thresholdUint {
+			return true, -1
+		}
+		if actualUint > thresholdUint {
+			return true, 1
+		}
+		return true, 0
+
+	// Both negative integers
+	case actualClass == numClassNegativeInt && thresholdClass == numClassNegativeInt:
+		if actualVal.Int() < thresholdVal.Int() {
+			return true, -1
+		}
+		if actualVal.Int() > thresholdVal.Int() {
+			return true, 1
+		}
+		return true, 0
+
+	// Negative int vs negative float
+	case actualClass == numClassNegativeInt && thresholdClass == numClassNegativeFloat:
+		actualFloat := float64(actualVal.Int())
+		thresholdFloat := thresholdVal.Float()
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	case actualClass == numClassNegativeFloat && thresholdClass == numClassNegativeInt:
+		actualFloat := actualVal.Float()
+		thresholdFloat := float64(thresholdVal.Int())
+		if actualFloat < thresholdFloat {
+			return true, -1
+		}
+		if actualFloat > thresholdFloat {
+			return true, 1
+		}
+		return true, 0
+
+	// Default: types cannot be compared
+	default:
+		return false, 0
+	}
+}
+
+func classify(v any) numClass {
+	val := reflect.ValueOf(v)
+	switch {
+	case val.CanInt() && val.Int() < 0:
+		return numClassNegativeInt
+	case val.CanInt():
+		return numClassNormalInt
+	case val.CanUint() && val.Uint() > math.MaxInt64:
+		return numClassBigUint
+	case val.CanUint():
+		return numClassUint
+	case val.CanFloat() && val.Float() < 0:
+		return numClassNegativeFloat
+	case val.CanFloat() && val.Float() > math.MaxInt64:
+		return numClassBigFloat
+	case val.CanFloat():
+		return numClassFloat
+	default:
+		return numClassNonNumeric
+	}
 }
 
 // Conversion helpers
@@ -241,6 +380,8 @@ func toFloat64(v reflect.Value) float64 {
 		return v.Float()
 	case v.CanInt():
 		return float64(v.Int())
+	case v.CanUint():
+		return float64(v.Uint())
 	default:
 		return 0
 	}

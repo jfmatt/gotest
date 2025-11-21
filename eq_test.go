@@ -53,6 +53,8 @@ type x struct {
 	anyList []any
 }
 
+type Name string
+
 func TestEqual(t *testing.T) {
 	// Basic case
 	ExpectEq(t, x{}, x{})
@@ -63,6 +65,10 @@ func TestEqual(t *testing.T) {
 	ExpectEq(t, 123, 123)
 	ExpectThat(t, 123, Not(Eq(456)))
 	ExpectThat(t, 123, Not(Eq(int64(123))))
+
+	// Named vs. unnamed types with same underlying type
+	var n Name = "abc"
+	ExpectEq(t, n, "abc")
 
 	// With a private field
 	ExpectThat(t, x{privateString: "a"}, Not(Eq(x{privateString: "b"})))
